@@ -1,0 +1,36 @@
+[
+    {
+      "_id": "946c1238-192b-4a96-9987-96c9dc7a2543",
+      "type": "TABLE_DUMP",
+      "num": 99,
+      "timestamp": 1203877333,
+      "originated_time": 1203319851,
+      "flag": "B",
+      "peer_ip": "154.11.98.225",
+      "peer_as": "852",
+      "nlri": [
+        "4.0.0.0/9"
+      ],
+      "withdrawn": [],
+      "as_path": [
+        "852",
+        "1239",
+        "3356"
+      ],
+      "origin": "IGP",
+      "next_hop": [
+        "154.11.98.225"
+      ],
+      "local_pref": 0,
+      "med": 0,
+      "communities": [
+        "852:180"
+      ],
+      "atomic_aggr": "AG",
+      "aggr": "3356 4.69.130.6",
+      "as4_path": [],
+      "as4_aggr": "",
+      "old_state": 0,
+      "new_state": 0
+    }
+  ]

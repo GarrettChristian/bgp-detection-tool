@@ -1,0 +1,39 @@
+[
+    {
+      "_id": "6f00a6dd-70fa-4f94-b7e6-b317ad555fa3",
+      "type": "BGP4MP",
+      "num": 99,
+      "timestamp": 1203878361,
+      "originated_time": 1203878361,
+      "flag": "A",
+      "peer_ip": "134.55.200.31",
+      "peer_as": "293",
+      "nlri": [
+        "200.33.100.0/22"
+      ],
+      "withdrawn": [],
+      "as_path": [
+        "293",
+        "7018",
+        "28513",
+        "8151",
+        "21603"
+      ],
+      "origin": "IGP",
+      "next_hop": [
+        "134.55.200.31"
+      ],
+      "local_pref": 0,
+      "med": 0,
+      "communities": [
+        "293:14",
+        "293:46"
+      ],
+      "atomic_aggr": "AG",
+      "aggr": "21603 201.116.69.78",
+      "as4_path": [],
+      "as4_aggr": "",
+      "old_state": 0,
+      "new_state": 0
+    }
+  ]

@@ -7,7 +7,7 @@ from pymongo import MongoClient
 from pprint import pprint
 
 
-configFile = open("mongoconnect.txt", "r")
+configFile = open("../mongoconnect.txt", "r")
 mongoUrl = configFile.readline()
 print("Connecting to: ", mongoUrl)
 configFile.close()
