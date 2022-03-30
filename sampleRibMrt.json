@@ -1,0 +1,65 @@
+[
+    {
+      "timestamp": {
+        "1203877333": "2008-02-24 13:22:13"
+      },
+      "type": {
+        "12": "TABLE_DUMP"
+      },
+      "subtype": {
+        "1": "IPv4"
+      },
+      "length": 42,
+      "view_number": 0,
+      "sequence_number": 0,
+      "prefix": "0.0.0.0",
+      "prefix_length": 0,
+      "status": 1,
+      "originated_time": {
+        "1203682387": "2008-02-22 07:13:07"
+      },
+      "peer_ip": "96.4.0.55",
+      "peer_as": "11686",
+      "path_attribute_length": 20,
+      "path_attributes": [
+        {
+          "flag": 64,
+          "type": {
+            "1": "ORIGIN"
+          },
+          "length": 1,
+          "value": {
+            "0": "IGP"
+          }
+        },
+        {
+          "flag": 64,
+          "type": {
+            "2": "AS_PATH"
+          },
+          "length": 6,
+          "value": [
+            {
+              "type": {
+                "2": "AS_SEQUENCE"
+              },
+              "length": 2,
+              "value": [
+                "11686",
+                "4436"
+              ]
+            }
+          ]
+        },
+        {
+          "flag": 64,
+          "type": {
+            "3": "NEXT_HOP"
+          },
+          "length": 4,
+          "value": "96.4.0.55"
+        }
+      ]
+    }
+  ]
+  

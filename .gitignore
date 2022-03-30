@@ -130,4 +130,7 @@ dmypy.json
 
 # sensitive database config info
 database.ini
+mongoconnect.txt
 
+# data sources
+routing_data/*

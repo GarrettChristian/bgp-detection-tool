@@ -8,9 +8,9 @@ bgp-detection-tool for the network security group project
 
 ### System requirements detection tool
 - python3
-- pip install psycopg2
-  - Note on mac first needed to: brew install postgres
-
+- pip install mrtparse
+- python3 -m pip install pymongo
+- python3 -m pip install "pymongo[srv]"
 
 ---
 
@@ -25,5 +25,9 @@ bgp-detection-tool for the network security group project
 - Note, on mac I had to run the "Install Certificates.command" found where my python is installed
 
 
+---
 
+### postgres exploration
+- pip install psycopg2
+  - Note on mac first needed to: brew install postgres
 
