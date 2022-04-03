@@ -140,22 +140,22 @@ class BgpDump:
                 if (self.print):
                     self.print_line(nlri, next_hop)
 
-    def td_toDict(self, m, count):
-        data = {}
-        data["type"] = 'TABLE_DUMP'
-        data["flag"] = 'B'
-        data["timestamp"] = list(m['timestamp'])[0]
-        data["num"] = count
-        data["originated_time"] = list(m['originated_time'])[0]
-        data["peer_ip"] = m['peer_ip']
-        data["peer_as"] = m['peer_as']
-        data["prefix"] = m['prefix']
-        data["prefix_length"] = m['prefix_length']
-        path_attributes = []
-        for attr in m['path_attributes']:
-            path_attributes.append(attr)
-        data["path_attributes"] = path_attributes
-        return data
+    # def td_toDict(self, m, count):
+    #     data = {}
+    #     data["type"] = 'TABLE_DUMP'
+    #     data["flag"] = 'B'
+    #     data["timestamp"] = list(m['timestamp'])[0]
+    #     data["num"] = count
+    #     data["originated_time"] = list(m['originated_time'])[0]
+    #     data["peer_ip"] = m['peer_ip']
+    #     data["peer_as"] = m['peer_as']
+    #     data["prefix"] = m['prefix']
+    #     data["prefix_length"] = m['prefix_length']
+    #     path_attributes = []
+    #     for attr in m['path_attributes']:
+    #         path_attributes.append(attr)
+    #     data["path_attributes"] = path_attributes
+    #     return data
 
     def td_subtype(self, m):
         self.subtypeNum = list(m['subtype'])[0]
@@ -390,6 +390,35 @@ class BgpDump:
             return self.aggr
 
     def toDict(self):
+        data = {}
+        data["_id"] = str(uuid.uuid4())
+        data["type"] = self.type
+        data["num"] = self.num
+        data["timestamp"] = self.ts
+        data["originated_time"] = self.org_time
+        data["flag"] = self.flag
+        data["peer_ip"] = self.peer_ip
+        data["peer_as"] = self.peer_as
+        data["nlri"] = self.nlri
+        data["withdrawn"] = self.withdrawn
+        data["as_path"] = self.as_path
+        data["origin"] = self.origin
+        data["next_hop"] = self.next_hop
+        data["local_pref"] = self.local_pref
+        data["med"] = self.med
+        data["communities"] = self.comm_list
+        data["atomic_aggr"] = self.atomic_aggr
+        data["aggr"] = self.aggr
+        data["as4_path"] = self.as4_path
+        data["as4_aggr"] = self.as4_aggr
+        data["old_state"] = self.old_state
+        data["new_state"] = self.new_state
+        data['subtype'] = self.subtype
+        data['subtype_num'] = self.subtypeNum
+
+        return data
+
+    def toDictSelect(self):
         data = {}
         data["_id"] = str(uuid.uuid4())
         data["type"] = self.type
