@@ -65,11 +65,11 @@ def main():
             
         # Batched insert
         if (len(randomSampleBatch) == 200):
-                # db.bgpdata.insert_many(randomSampleBatch)
+                db.bgpdata.insert_many(randomSampleBatch)
                 randomSampleBatch = []
 
-    # if (len(randomSampleBatch) != 0):
-        # db.bgpdata.insert_many(randomSampleBatch)
+    if (len(randomSampleBatch) != 0):
+        db.bgpdata.insert_many(randomSampleBatch)
 
     toc = time.perf_counter()
     timeSeconds = toc - tic
