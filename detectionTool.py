@@ -36,6 +36,8 @@ def processUpdateFiles(dir):
     totalUpdateCount = 0
 
     updateFiles = glob.glob(dir + "/updates*.bz2")
+    # TODO order these cronologically
+    
     for updateFile in updateFiles:
         print(f"Starting Processing on {updateFile}")
         totalUpdateCount += processUpdateFile(updateFile)
@@ -78,6 +80,7 @@ def processUpdate(update):
 Checks to see if there was a hijack
 """
 def checkForPrefixHijack(update):
+    global detectedAttacks
 
     # print("Update", update["nlri"])
     # print(json.dumps([update], indent=2))
@@ -91,23 +94,30 @@ def checkForPrefixHijack(update):
         # For every prefix announced by this origin
         for prefix in update["nlri"]:
 
-            prefixList = largerPrefixes(prefix, type)
+            # Already detected
+            if ((prefix, asOrigin) in detectedAttacks.keys()):
+                count = detectedAttacks.get((prefix, asOrigin), 0)
+                detectedAttacks[(prefix, asOrigin)] = count + 1
 
-            # a different origin 
-            # the same or longer version of this prefix 
-            query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
-            # print(query)
-            findResults = bgpcollection.find(query)
+            # Check against db 
+            else:
+                prefixList = largerPrefixes(prefix)
 
-            for announcement in findResults:
-                printAttackInfo(update, prefix, announcement)
+                # a different origin 
+                # the same or longer version of this prefix 
+                query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
+                # print(query)
+                findResults = bgpcollection.find(query)
+
+                for announcement in findResults:
+                    printAttackInfo(update, prefix, announcement)
 
 
 
 """
 Prints the information related to the attack
 """
-def largerPrefixes(addressPrefix, ipv):
+def largerPrefixes(addressPrefix):
 
     pathSplit = addressPrefix.split('/')
 
@@ -134,29 +144,24 @@ def largerPrefixes(addressPrefix, ipv):
 Prints the information related to the attack
 """
 def printAttackInfo(update, updatePrefix, announcement):
-
-    prefixOriginPair = (updatePrefix, update["as_origin"])
-
     global detectedAttacks
 
-    count = detectedAttacks.get(prefixOriginPair, 0)
+    print("\n------------------------------")
+    print("Potential Hijack Attack Detected!")
+    print("Update")
+    print("Origin", update["as_origin"])
+    print("Prefix", updatePrefix)
+    # print(json.dumps([update], indent=2))
 
-    if (prefixOriginPair not in detectedAttacks.keys()):
-        print("\n------------------------------")
-        print("Potential Hijack Attack Detected!")
-        print("Update")
-        print("Origin", update["as_origin"])
-        print("Prefix", updatePrefix)
-        # print(json.dumps([update], indent=2))
-
-        print("RIB")
-        print("Origin", announcement["as_origin"])
-        print("Prefix", announcement["nlri"])
-        # print(json.dumps([announcement], indent=2))
+    print("RIB")
+    print("Origin", announcement["as_origin"])
+    print("Prefix", announcement["nlri"])
+    # print(json.dumps([announcement], indent=2))
         
         
     # update the occurances of this detection
-    detectedAttacks[prefixOriginPair] = count + 1    
+    detectedAttacks[(updatePrefix, update["as_origin"])] = 1
+    
 
 
 def main():
