@@ -431,6 +431,8 @@ class BgpDump:
         data["nlri"] = self.nlri
         data["withdrawn"] = self.withdrawn
         data["as_path"] = self.as_path
+        if (len(self.as_path) > 0):
+            data["as_origin"] = self.as_path[-1]
         data["origin"] = self.origin
         data["next_hop"] = self.next_hop
         data["local_pref"] = self.local_pref
@@ -457,7 +459,7 @@ def parseData(m, args, count):
     elif t == MRT_T['BGP4MP']:
         b.bgp4mp(m.data, count)
 
-    return b.toDict()
+    return b.toDictSelect()
 
 def main():
     args = parse_args()

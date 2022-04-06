@@ -6,37 +6,15 @@ from pymongo import MongoClient
 from mrtparse import *
 import parserHelper
 import time
+from commonUtil import formatSecondsToHhmmss, mongoConnect
 
-
-"""
-formatSecondsToHhmmss
-Helper to convert seconds to hours minutes and seconds
-@param seconds
-@return formatted string of hhmmss
-"""
-def formatSecondsToHhmmss(seconds):
-    hours = seconds / (60*60)
-    seconds %= (60*60)
-    minutes = seconds / 60
-    seconds %= 60
-    return "%02i:%02i:%02i" % (hours, minutes, seconds)
-
-def mongoConnect():
-    configFile = open("mongoconnect.txt", "r")
-    mongoUrl = configFile.readline()
-    print("Connecting to: ", mongoUrl)
-    configFile.close()
-
-    client = MongoClient(mongoUrl)
-    db = client.bgpdata
-    return db
 
 def main():
 
     # In google rib there are 10191400
     print("Starting RIB Loader")
     
-    db = mongoConnect()
+    db = mongoConnect("bgpdata")
 
     # insertData = {}
     args = parserHelper.parse_args()
@@ -52,12 +30,13 @@ def main():
 
         insertData = {}
         insertData = parserHelper.parseData(entry, args, i)
-        if (insertData["nlri"][0]) in ipPrefixSet:
-            print(f"{i}, {addedCount} another from diff ip {insertData['peer_ip']} for prefix ", insertData["nlri"][0])
-            addedCount += 1
+        # if (insertData["nlri"][0]) in ipPrefixSet:
+        #     print(f"{i}, {addedCount} another from diff ip {insertData['peer_ip']} for prefix ", insertData["nlri"][0])
+        #     addedCount += 1
         
+        # Ranomly sample ever 1000th or if you're the specific google example
         i += 1
-        if (i % 1000 == 0):
+        if (i % 1000 == 0 or (insertData['peer_ip'] == "81.209.156.1" and insertData["nlri"][-1] == "208.65.152.0/22")):
             addedCount += 1
             print(f"{i}, {addedCount} first from ip {insertData['peer_ip']} with prefix ", insertData["nlri"][0])
             ipPrefixSet.add((insertData['peer_ip'], insertData["nlri"][0]))
