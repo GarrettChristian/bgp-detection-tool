@@ -31,4 +31,5 @@ bgp-detection-tool for the network security group project
 - pip install psycopg2
   - Note on mac first needed to: brew install postgres
 
-
+### routinator connection
+- pip install requests

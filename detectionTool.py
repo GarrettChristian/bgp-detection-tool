@@ -28,6 +28,7 @@ db = None
 bgpcollection = None
 detectedAttacks = {}
 
+
 """
 Processes a list of update files
 """
@@ -36,12 +37,14 @@ def processUpdateFiles(dir):
     totalUpdateCount = 0
 
     updateFiles = glob.glob(dir + "/updates*.bz2")
+    # TODO order these cronologically
+    
     for updateFile in updateFiles:
         print(f"Starting Processing on {updateFile}")
         totalUpdateCount += processUpdateFile(updateFile)
         print(f"Finished Processing on {updateFile}")
         
-    return totalUpdateCount    
+    return totalUpdateCount
 
 
 """
@@ -63,51 +66,96 @@ def processUpdateFile(updateFile):
 
 """
 Handles one specific update
+
+Currently only checks for prefix hijck attacks
+
 """
 def processUpdate(update):
-
-    checkForPrefixHijack(update)
-    # TODO add other checks for diff attacks?
-
-    # TODO when is this saved? always?
-    # Probably check if this is a shorter version of one of our tracked prefixes save then?
-    # db.bgpdata.insert_one(update)
+    global detectedAttacks
 
 
-"""
-Checks to see if there was a hijack
-"""
-def checkForPrefixHijack(update):
-
-    # print("Update", update["nlri"])
-    # print(json.dumps([update], indent=2))
-
-    # Must have an origin
+    # Must have an as origin
     if "as_origin" in update.keys():
         asOrigin = update["as_origin"]
-        # if (asOrigin == "17557"):
-        #     print(json.dumps([update], indent=2))
 
         # For every prefix announced by this origin
         for prefix in update["nlri"]:
 
-            prefixList = largerPrefixes(prefix, type)
+            # Already detected
+            if ((prefix, asOrigin) in detectedAttacks.keys()):
+                count = detectedAttacks.get((prefix, asOrigin), 0)
+                detectedAttacks[(prefix, asOrigin)] = count + 1
 
-            # a different origin 
-            # the same or longer version of this prefix 
-            query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
-            # print(query)
-            findResults = bgpcollection.find(query)
+            # Check against db 
+            else:
+                # Varient 1
+                # TODO probably better to combine the get prefix calls, 
+                # that way we can post process to see what it matched with rather than runninng multiple queries
+                prefixList = getLargerPrefixes(prefix)
 
-            for announcement in findResults:
-                printAttackInfo(update, prefix, announcement)
+                # a different origin 
+                # the same or longer version of this prefix 
+                query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
+                # print(query)
+                results = bgpcollection.find(query)
 
+                for announcement in results:
+                    printAttackInfo(update, prefix, announcement)
+
+                    # Check to see if this prefix has announced this AS before
+                    query = {"as_origin": asOrigin, "nlri": prefix}
+                    result = bgpcollection.find_one(query)
+                    if (result != None):
+                        print(f"{asOrigin} has announced {prefix} before")
+
+
+                # TODO add varient 2 getSmallerPrefixes
+                # TODO add checks to see if the prefix is the same, since this can be an example of SICO
+                # TODO could also check for path attacks, rather than seeing if origin is different 
 
 
 """
-Prints the information related to the attack
+"An AS could advertise a more specific prefix than the one being 
+advertised by the owner and this would hijack all the traffic to the specific prefix. 
+However, the hijacking AS would not be able route this traffic onto the owner and hence, 
+interception would not be possible."
+- A Study of Prefix Hijacking and Interception in the Internet
+
+This finds all larger prefixes to look for the above type of hijack attack 
+This is the google 2008 attack observed in HW2
 """
-def largerPrefixes(addressPrefix, ipv):
+def getLargerPrefixes(addressPrefix):
+
+    pathSplit = addressPrefix.split('/')
+
+    address = pathSplit[0]
+    prefixLength = int(pathSplit[1])
+
+    prefixes = []
+    
+    # IPv4
+    if type(ip_address(address)) is IPv4Address:
+        for newPrefix in range (16, prefixLength + 1):
+            supernet = ip_network(addressPrefix).supernet(new_prefix=newPrefix)
+            prefixes.append(str(supernet))
+        
+    else: # "AFI_IPv6"
+        # TODO!
+        prefixes = []
+
+
+    return prefixes
+
+"""
+"An AS could advertise a less specific prefix than the one being advertised by the owner. 
+This would hijack traffic to the prefix only when the owner withdraws its advertisements. 
+However, even in that situation, 
+the hijacking AS would not be able to route the hijacked traffic to the owner."
+- A Study of Prefix Hijacking and Interception in the Internet
+
+This finds all smaller prefixes to look for the above type of hijack attack 
+"""
+def getSmallerPrefixes(addressPrefix):
 
     pathSplit = addressPrefix.split('/')
 
@@ -118,9 +166,9 @@ def largerPrefixes(addressPrefix, ipv):
     
     # IPv4
     if type(ip_address(address)) is IPv4Address:
-        for newPrefix in range (16, prefixLength):
-            supernet = ip_network(addressPrefix).supernet(new_prefix=newPrefix)   
-            prefixes.append(str(supernet))
+        for newPrefix in range (prefixLength + 1, 32):
+            subnet = ip_network(addressPrefix).subnets(new_prefix=newPrefix)
+            prefixes.append(str(subnet))
         
     else: # "AFI_IPv6"
         # TODO!
@@ -131,32 +179,27 @@ def largerPrefixes(addressPrefix, ipv):
 
 
 """
-Prints the information related to the attack
+Prints the important information related to the hijack attack
 """
 def printAttackInfo(update, updatePrefix, announcement):
-
-    prefixOriginPair = (updatePrefix, update["as_origin"])
-
     global detectedAttacks
 
-    count = detectedAttacks.get(prefixOriginPair, 0)
+    print("\n------------------------------")
+    print("Potential Hijack Attack Detected!")
+    print("Update")
+    print("Origin", update["as_origin"])
+    print("Prefix", updatePrefix)
+    # print(json.dumps([update], indent=2))
 
-    if (prefixOriginPair not in detectedAttacks.keys()):
-        print("\n------------------------------")
-        print("Potential Hijack Attack Detected!")
-        print("Update")
-        print("Origin", update["as_origin"])
-        print("Prefix", updatePrefix)
-        # print(json.dumps([update], indent=2))
-
-        print("RIB")
-        print("Origin", announcement["as_origin"])
-        print("Prefix", announcement["nlri"])
-        # print(json.dumps([announcement], indent=2))
+    print("RIB")
+    print("Origin", announcement["as_origin"])
+    print("Prefix", announcement["nlri"])
+    # print(json.dumps([announcement], indent=2))
         
         
     # update the occurances of this detection
-    detectedAttacks[prefixOriginPair] = count + 1    
+    detectedAttacks[(updatePrefix, update["as_origin"])] = 1
+    
 
 
 def main():
