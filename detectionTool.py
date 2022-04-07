@@ -70,11 +70,7 @@ Handles one specific update
 Currently only checks for prefix hijck attacks
 
 """
-<<<<<<< HEAD
 def processUpdate(update):
-=======
-def checkForPrefixHijack(update):
->>>>>>> 29554bee8344de3d9f88f11c2af178a3b2ce891a
     global detectedAttacks
 
 
@@ -89,7 +85,6 @@ def checkForPrefixHijack(update):
             if ((prefix, asOrigin) in detectedAttacks.keys()):
                 count = detectedAttacks.get((prefix, asOrigin), 0)
                 detectedAttacks[(prefix, asOrigin)] = count + 1
-<<<<<<< HEAD
 
             # Check against db 
             else:
@@ -103,21 +98,6 @@ def checkForPrefixHijack(update):
                 query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
                 # print(query)
                 results = bgpcollection.find(query)
-=======
-
-            # Check against db 
-            else:
-                prefixList = largerPrefixes(prefix)
-
-                # a different origin 
-                # the same or longer version of this prefix 
-                query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
-                # print(query)
-                findResults = bgpcollection.find(query)
-
-                for announcement in findResults:
-                    printAttackInfo(update, prefix, announcement)
->>>>>>> 29554bee8344de3d9f88f11c2af178a3b2ce891a
 
                 for announcement in results:
                     printAttackInfo(update, prefix, announcement)
@@ -144,11 +124,7 @@ interception would not be possible."
 This finds all larger prefixes to look for the above type of hijack attack 
 This is the google 2008 attack observed in HW2
 """
-<<<<<<< HEAD
 def getLargerPrefixes(addressPrefix):
-=======
-def largerPrefixes(addressPrefix):
->>>>>>> 29554bee8344de3d9f88f11c2af178a3b2ce891a
 
     pathSplit = addressPrefix.split('/')
 
