@@ -2,10 +2,46 @@
 Adapted from https://github.com/t2mune/mrtparse/blob/master/examples/mrt2bgpdump.py
 """
 
-import sys, copy
+import sys, argparse, copy
 from datetime import *
 from mrtparse import *
+import json
 import uuid
+
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description='This script converts to bgpdump format.')
+    p.add_argument(
+        '-m', dest='verbose', default=False, action='store_true',
+        help='one-line per entry with unix timestamps')
+    p.add_argument(
+        '-M', dest='verbose', action='store_false',
+        help='one-line per entry with human readable timestamps(default format)')
+    p.add_argument(
+        '-O', dest='output', default=sys.stdout, nargs='?', metavar='file',
+        type=argparse.FileType('w'),
+        help='output to a specified file')
+    p.add_argument(
+        '-s', dest='output', action='store_const', const=sys.stdout,
+        help='output to STDOUT(default output)')
+    p.add_argument(
+        '-v', dest='output', action='store_const', const=sys.stderr,
+        help='output to STDERR')
+    p.add_argument(
+        '-t', dest='ts_format', default='dump', choices=['dump', 'change'],
+        help='timestamps for RIB dumps reflect the time of the dump \
+            or the last route modification(default: dump)')
+    p.add_argument(
+        '-p', dest='pkt_num', default=False, action='store_true',
+        help='show packet index at second position')
+    p.add_argument(
+        '-print', dest="print", default=False, action='store_true',
+        help='Print the data')
+    p.add_argument(
+        'path_to_file',
+        help='specify path to MRT format file')
+    return p.parse_args()
 
 
 class BgpDump:
@@ -17,11 +53,11 @@ class BgpDump:
         'print', 'subtype', 'subtypeNum',
     ]
 
-    def __init__(self):
-        self.verbose = False
-        self.output = sys.stdout
-        self.ts_format = "dump"
-        self.pkt_num = False
+    def __init__(self, args):
+        self.verbose = args.verbose
+        self.output = args.output
+        self.ts_format = args.ts_format
+        self.pkt_num = args.pkt_num
         self.type = ''
         self.num = 0
         self.ts = 0
@@ -44,7 +80,7 @@ class BgpDump:
         self.as4_aggr = ''
         self.old_state = 0
         self.new_state = 0
-        self.print = False
+        self.print = args.print
         self.subtype = ''
         self.subtypeNum = 0
 
@@ -413,8 +449,8 @@ class BgpDump:
 
         return data
 
-def parseData(m, count):
-    b = BgpDump()
+def parseData(m, args, count):
+    b = BgpDump(args)
     t = list(m.data['type'])[0]
     if t == MRT_T['TABLE_DUMP']:
         b.td(m.data, count)
@@ -425,4 +461,30 @@ def parseData(m, count):
 
     return b.toDictSelect()
 
+def main():
+    args = parse_args()
+    d = Reader(args.path_to_file)
+    count = 0
+    for m in d:
+        if m.err:
+            continue
+        b = BgpDump(args)
+        t = list(m.data['type'])[0]
+        if t == MRT_T['TABLE_DUMP']:
+            b.td(m.data, count)
+        elif t == MRT_T['TABLE_DUMP_V2']:
+            b.td_v2(m.data)
+        elif t == MRT_T['BGP4MP']:
+            b.bgp4mp(m.data, count)
+        count += 1
+        
+        
+        item = b.toDict()
+        if args.print:
+            print(json.dumps([item], indent=2))
 
+        if count == 100:
+            break
+
+if __name__ == '__main__':
+    main()

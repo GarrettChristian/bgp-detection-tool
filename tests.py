@@ -2,7 +2,8 @@
 import re
 
 
-from detectionTool import largerPrefixes
+from detectionTool import getLargerPrefixes
+from detectionTool import getSmallerPrefixes
 
 
 
@@ -10,7 +11,7 @@ def testPrefixHijack():
     googlePrefix = "208.65.152.0/22"
     hijackPrefix = "208.65.153.0/24"
 
-    results = largerPrefixes(hijackPrefix, "AFI_IPv4")
+    results = getLargerPrefixes(hijackPrefix)
 
     found = False
     for subnet in results:
@@ -22,7 +23,12 @@ def testPrefixHijack():
 
 
 def main():
-    testRegexPrefixHijack()
+    testPrefixHijack()
+
+    print("larger")
+    print(getLargerPrefixes("208.65.153.0/24"))
+    print("smaller")
+    print(getSmallerPrefixes("208.65.153.0/24"))
 
 
 if __name__ == '__main__':

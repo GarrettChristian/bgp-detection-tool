@@ -19,14 +19,24 @@ import json
 from commonUtil import formatSecondsToHhmmss, mongoConnect
 import ipaddress
 from ipaddress import ip_network, ip_address, IPv4Address
+import argparse
 
 # ------------------------------------------
 
 # Global variables
-args = parserHelper.parse_args()
 db = None
 bgpcollection = None
 detectedAttacks = {}
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description='Update Parser for the BGP Detection Tool')
+    p.add_argument(
+        'update_dir', help='Path to the update directory')
+    p.add_argument(
+        'mongo_collection', help='Mongo db collection name')
+    
+    return p.parse_args()
 
 
 """
@@ -37,12 +47,18 @@ def processUpdateFiles(dir):
     totalUpdateCount = 0
 
     updateFiles = glob.glob(dir + "/updates*.bz2")
-    # TODO order these cronologically
     
-    for updateFile in updateFiles:
-        print(f"Starting Processing on {updateFile}")
+    # Order the update files cronologically
+    updateFiles = sorted(updateFiles)
+
+    print("Update Files:")
+    for i, updateFile in enumerate(updateFiles):
+        print(f"{i + 1} {updateFile}")
+    
+    for i, updateFile in enumerate(updateFiles):
+        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
         totalUpdateCount += processUpdateFile(updateFile)
-        print(f"Finished Processing on {updateFile}")
+        print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
         
     return totalUpdateCount
 
@@ -56,7 +72,7 @@ def processUpdateFile(updateFile):
     for entry in Reader(updateFile):
 
         # Convert to dictionary
-        updateData = parserHelper.parseData(entry, args, updateCount)
+        updateData = parserHelper.parseData(entry, updateCount)
         processUpdate(updateData)
 
         updateCount += 1
@@ -73,6 +89,7 @@ Currently only checks for prefix hijck attacks
 def processUpdate(update):
     global detectedAttacks
 
+    # TODO could examine withdraws, currently not differentiating 
 
     # Must have an as origin
     if "as_origin" in update.keys():
@@ -89,15 +106,24 @@ def processUpdate(update):
             # Check against db 
             else:
                 # Varient 1
-                # TODO probably better to combine the get prefix calls, 
-                # that way we can post process to see what it matched with rather than runninng multiple queries
-                prefixList = getLargerPrefixes(prefix)
+                prefixListLarger = getLargerPrefixes(prefix)
+                # TODO varient 2, I think smaller might be difficult onlly because it produces a lot of possible
+                # varients which could be difficult with the $in query that has to check against everythin
+                # we could concievbly change this to a clever regex then check on actual matches after
+                # trade off there is that it could be pulling more than we need to
+                # Another option is we could redo the db schema 
+                # to track each related announcement as a list with the prefix as the id, this could make saving easier 
+                # prefixListSmaller = getSmallerPrefixes(prefix)
+
+                prefixList = prefixListLarger + [prefix]
 
                 # a different origin 
-                # the same or longer version of this prefix 
+                # the same, shorter, or longer version of this prefix 
                 query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
                 # print(query)
                 results = bgpcollection.find(query)
+
+                # TODO post processing for longer short same 
 
                 for announcement in results:
                     printAttackInfo(update, prefix, announcement)
@@ -110,8 +136,13 @@ def processUpdate(update):
 
 
                 # TODO add varient 2 getSmallerPrefixes
-                # TODO add checks to see if the prefix is the same, since this can be an example of SICO
+                # TODO add checks to see if the prefix is the same, since this can be an example of SICO path, check comm
                 # TODO could also check for path attacks, rather than seeing if origin is different 
+                # TODO advertising an invalid route
+                # TODO ROA / RPKI
+    
+    # TODO save based on prefix if its in query = {"nlri": {"$in": prefixList}}
+    # Save
 
 
 """
@@ -162,13 +193,14 @@ def getSmallerPrefixes(addressPrefix):
     address = pathSplit[0]
     prefixLength = int(pathSplit[1])
 
-    prefixes = [addressPrefix]
+    prefixes = []
     
     # IPv4
     if type(ip_address(address)) is IPv4Address:
         for newPrefix in range (prefixLength + 1, 32):
-            subnet = ip_network(addressPrefix).subnets(new_prefix=newPrefix)
-            prefixes.append(str(subnet))
+            subnets = ip_network(addressPrefix).subnets(new_prefix=newPrefix)
+            for subnet in subnets:
+                prefixes.append(str(subnet))
         
     else: # "AFI_IPv6"
         # TODO!
@@ -207,21 +239,22 @@ def main():
     global bgpcollection
 
     print("Starting BGP Detection Tool")
+
+    args = parse_args()
+    print("Parsing Updates from: ", args.update_dir)
     
     # Connect to database
-    # TODO could add diff collections for the diff days we're examining 
     # Note is expected that the loader has been run first
+    # TODO could add diff collections for the diff days we're examining 
     db = mongoConnect("bgpdata")
-    bgpcollection = db["bgpdata"]
-
-    # Where the update files are stored
-    updateFileDirectory = sys.argv[1]
+    bgpcollection = db[args.mongo_collection]
+    print("Connected to bgpdata and collection ", args.mongo_collection)
 
     # Start timer
     tic = time.perf_counter()
     
     # Process updates
-    updateCount = processUpdateFiles(updateFileDirectory)
+    updateCount = processUpdateFiles(args.update_dir)
 
     # End timer
     toc = time.perf_counter()

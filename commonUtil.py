@@ -25,7 +25,7 @@ def formatSecondsToHhmmss(seconds):
 
 
 """
-Connect to our mongodb collection
+Connect to our mongodb 
 """
 def mongoConnect(database):
     configFile = open("mongoconnect.txt", "r")
