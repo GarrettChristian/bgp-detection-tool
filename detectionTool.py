@@ -27,6 +27,9 @@ import argparse
 db = None
 bgpcollection = None
 detectedAttacks = {}
+trackedPrefixes = set()
+
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -37,6 +40,23 @@ def parse_args():
         'mongo_collection', help='Mongo db collection name')
     
     return p.parse_args()
+
+
+"""
+Gets all the prefixes we're tracking
+"""
+def populateTrackedPrefixes():
+    print("Creating the set of prefixes we're tracking")
+
+    allPrefixes = set()
+    nlri = bgpcollection.find({}, { "_id": 0, "nlri": 1 })
+
+    for prefixList in nlri:
+        for prefix in prefixList["nlri"]:
+            allPrefixes.add(prefix)
+
+    return allPrefixes
+
 
 
 """
@@ -90,56 +110,84 @@ def processUpdate(update):
     global detectedAttacks
 
     # TODO could examine withdraws, currently not differentiating 
+    # print(json.dumps([update], indent=2))
 
-    # Must have an as origin
+    # Must have an origin to be announcing
     if "as_origin" in update.keys():
-        asOrigin = update["as_origin"]
 
-        # For every prefix announced by this origin
+        # For every prefix announced for this origin
         for prefix in update["nlri"]:
 
-            # Already detected
-            if ((prefix, asOrigin) in detectedAttacks.keys()):
-                count = detectedAttacks.get((prefix, asOrigin), 0)
-                detectedAttacks[(prefix, asOrigin)] = count + 1
+            prefixListLarger = getLargerPrefixes(prefix)
 
-            # Check against db 
-            else:
-                # Varient 1
-                prefixListLarger = getLargerPrefixes(prefix)
-                # TODO varient 2, I think smaller might be difficult onlly because it produces a lot of possible
-                # varients which could be difficult with the $in query that has to check against everythin
-                # we could concievbly change this to a clever regex then check on actual matches after
-                # trade off there is that it could be pulling more than we need to
-                # Another option is we could redo the db schema 
-                # to track each related announcement as a list with the prefix as the id, this could make saving easier 
-                # prefixListSmaller = getSmallerPrefixes(prefix)
+            for prefixLarge in prefixListLarger:
+                if prefixLarge in trackedPrefixes:
+                    print("TRACKED! LARGE")
 
-                prefixList = prefixListLarger + [prefix]
+            prefixListSmaller = getSmallerPrefixes(prefix)
 
-                # a different origin 
-                # the same, shorter, or longer version of this prefix 
-                query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
-                # print(query)
-                results = bgpcollection.find(query)
+            for prefixSmall in prefixListSmaller:
+                if prefixSmall in trackedPrefixes:
+                    print("TRACKED! SMALL")
 
-                # TODO post processing for longer short same 
-
-                for announcement in results:
-                    printAttackInfo(update, prefix, announcement)
-
-                    # Check to see if this prefix has announced this AS before
-                    query = {"as_origin": asOrigin, "nlri": prefix}
-                    result = bgpcollection.find_one(query)
-                    if (result != None):
-                        print(f"{asOrigin} has announced {prefix} before")
+            if prefix in trackedPrefixes:
+                print("TRACKED! SAME")
 
 
-                # TODO add varient 2 getSmallerPrefixes
-                # TODO add checks to see if the prefix is the same, since this can be an example of SICO path, check comm
-                # TODO could also check for path attacks, rather than seeing if origin is different 
-                # TODO advertising an invalid route
-                # TODO ROA / RPKI
+    # # Must have an as origin
+    # if "as_origin" in update.keys():
+    #     asOrigin = update["as_origin"]
+
+    #     # For every prefix announced by this origin
+    #     for prefix in update["nlri"]:
+
+    #         # Already detected
+    #         if ((prefix, asOrigin) in detectedAttacks.keys()):
+    #             count = detectedAttacks.get((prefix, asOrigin), 0)
+    #             detectedAttacks[(prefix, asOrigin)] = count + 1
+
+    #         # Check against db 
+    #         else:
+    #             # Varient 1
+    #             prefixListLarger = getLargerPrefixes(prefix)
+    #             # TODO varient 2, I think smaller might be difficult onlly because it produces a lot of possible
+    #             # varients which could be difficult with the $in query that has to check against everythin
+    #             # we could concievbly change this to a clever regex then check on actual matches after
+    #             # trade off there is that it could be pulling more than we need to
+    #             # Another option is we could redo the db schema 
+    #             # to track each related announcement as a list with the prefix as the id, this could make saving easier 
+    #             # prefixListSmaller = getSmallerPrefixes(prefix)
+
+    #             prefixList = prefixListLarger + [prefix]
+
+    #             # a different origin 
+    #             # the same, shorter, or longer version of this prefix 
+    #             query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
+    #             # print(query)
+    #             results = bgpcollection.find(query)
+
+    #             # TODO post processing for longer short same 
+
+    #             for announcement in results:
+    #                 printAttackInfo(update, prefix, announcement)
+
+    #                 # Check to see if this prefix has announced this AS before
+    #                 query = {"as_origin": asOrigin, "nlri": prefix}
+    #                 result = bgpcollection.find_one(query)
+    #                 if (result != None):
+    #                     print(f"{asOrigin} has announced {prefix} before")
+
+
+    #             # TODO add varient 2 getSmallerPrefixes
+    #             # TODO add checks to see if the prefix is the same, since this can be an example of SICO path, check comm
+    #             # TODO could also check for path attacks, rather than seeing if origin is different 
+    #             # TODO advertising an invalid route
+    #             # TODO ROA / RPKI
+
+    #             # Check for path poisoning
+    #             query = {"as_origin": asOrigin, "nlri": {"$in": prefixList}}
+
+
     
     # TODO save based on prefix if its in query = {"nlri": {"$in": prefixList}}
     # Save
@@ -237,6 +285,7 @@ def printAttackInfo(update, updatePrefix, announcement):
 def main():
     global db
     global bgpcollection
+    global trackedPrefixes
 
     print("Starting BGP Detection Tool")
 
@@ -252,6 +301,9 @@ def main():
 
     # Start timer
     tic = time.perf_counter()
+
+    # Get all the prefixes we're tracking
+    trackedPrefixes = populateTrackedPrefixes()
     
     # Process updates
     updateCount = processUpdateFiles(args.update_dir)

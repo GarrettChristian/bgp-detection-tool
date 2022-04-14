@@ -323,8 +323,8 @@ class BgpDump:
                 )
         elif attr_t == BGP_ATTR_T['AS4_PATH']:
             self.as4_path = []
-            seg_t = list(seg['type'])[0]
             for seg in attr['value']:
+                seg_t = list(seg['type'])[0]
                 if seg_t == AS_PATH_SEG_T['AS_SET']:
                     self.as4_path.append('{%s}' % ','.join(seg['value']))
                 elif seg_t == AS_PATH_SEG_T['AS_CONFED_SEQUENCE']:
@@ -420,8 +420,10 @@ def parseData(m, count):
         b.td(m.data, count)
     elif t == MRT_T['TABLE_DUMP_V2']:
         b.td_v2(m.data)
-    elif t == MRT_T['BGP4MP']:
+    elif t == MRT_T['BGP4MP'] or t == MRT_T['BGP4MP_ET']:
         b.bgp4mp(m.data, count)
+    else:
+        raise RuntimeError("Unsuported conversion!")
 
     return b.toDictSelect()
 
