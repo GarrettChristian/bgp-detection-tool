@@ -66,7 +66,8 @@ def processUpdateFiles(dir):
 
     totalUpdateCount = 0
 
-    updateFiles = glob.glob(dir + "/updates*.bz2")
+    # updateFiles = glob.glob(dir + "/updates*.bz2")
+    updateFiles = glob.glob(dir + "/updates.20220307.1200.bz2")
     
     # Order the update files cronologically
     updateFiles = sorted(updateFiles)
@@ -93,7 +94,7 @@ def processUpdateFile(updateFile):
 
         # Convert to dictionary
         updateData = parserHelper.parseData(entry, updateCount)
-        processUpdate(updateData)
+        processUpdate(updateData, updateCount)
 
         updateCount += 1
     
@@ -106,7 +107,7 @@ Handles one specific update
 Currently only checks for prefix hijck attacks
 
 """
-def processUpdate(update):
+def processUpdate(update, num):
     global detectedAttacks
 
     # TODO could examine withdraws, currently not differentiating 
@@ -120,18 +121,49 @@ def processUpdate(update):
 
             prefixListLarger = getLargerPrefixes(prefix)
 
+            matchCase = -1
+            matchingPrefix = None
+
             for prefixLarge in prefixListLarger:
                 if prefixLarge in trackedPrefixes:
-                    print("TRACKED! LARGE")
+                    matchingPrefix = prefixLarge
+                    matchCase = 0
 
             prefixListSmaller = getSmallerPrefixes(prefix)
 
             for prefixSmall in prefixListSmaller:
                 if prefixSmall in trackedPrefixes:
-                    print("TRACKED! SMALL")
+                    matchingPrefix = prefixSmall
+                    matchCase = 1
 
             if prefix in trackedPrefixes:
-                print("TRACKED! SAME")
+                matchingPrefix = prefix
+                matchCase = 2
+
+            if matchingPrefix != None:
+                # print("----")
+                
+                query = {"nlri": matchingPrefix}
+                results = bgpcollection.find(query)
+
+                for announcement in results:
+                    announcementOrigin = announcement["as_origin"]
+                    updateOrigin = update["as_origin"]
+
+                    if announcementOrigin != updateOrigin:
+                        # TODO check for diff origin for prefix hijack
+                        # TODO check ROA
+                        print("%d prefix rib[%s] up[%s] Origin does not match (%d) could be prefix hijack: rib[%s] update[%s]"  % (num, announcement["nlri"][0], matchingPrefix, matchCase, announcementOrigin, updateOrigin))
+                    # else:
+                        # print("Origin matches could be path poison", matchCase, announcementOrigin, announcement["as_path"], update["as_path"])
+                        # TODO check path
+                        # TODO check communities 
+
+
+                # TODO save this one
+
+
+            
 
 
     # # Must have an as origin
