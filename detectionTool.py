@@ -251,7 +251,7 @@ def getLargerPrefixes(addressPrefix):
             prefixes.append(str(supernet))
         
     else: # "AFI_IPv6"
-        # TODO!
+        # TODO - choosing to ingore for now
         prefixes = []
 
 
@@ -283,8 +283,8 @@ def getSmallerPrefixes(addressPrefix):
                 prefixes.append(str(subnet))
         
     else: # "AFI_IPv6"
-        # TODO!
-        prefixes = [addressPrefix]
+        # TODO - choosing to ingore for now
+        prefixes = []
 
 
     return prefixes
