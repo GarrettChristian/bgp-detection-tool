@@ -180,15 +180,22 @@ def processUpdate(update, num, updateFile):
                             query = {"as_origin": updateOrigin}
                             previousOrigin = bgpcollection.find(query)
                             prevRibCount = 0
+                            prevUpdateSaved = 0
                             prevUpdateCount = 0
+                            prevUpdateSavedThisPrefix = 0
+                            prevUpdateCountThisPrefix = 0
                             for prev in previousOrigin:
                                 if ("count" in prev.keys()):
-                                    prevUpdateCount += 1
+                                    prevUpdateSaved += 1
+                                    prevUpdateCount += prev["count"]
+                                    if (prev["nlri"][0] == prefix):
+                                        prevUpdateSavedThisPrefix += 1
+                                        prevUpdateCountThisPrefix += prev["count"]
                                 else:
                                     prevRibCount += 1
 
                             if (prevRibCount > 0 or prevUpdateCount > 0):
-                                print("\t\tFor Update origin %-6s previously seen: \n\t\t\t%-5d RIB announcements \n\t\t\t%-5d Updates" % (updateOrigin, prevRibCount, prevUpdateCount))
+                                print("\t\tFor Update origin %-6s previously seen: \n\t\t\t%-5d RIB announcements \n\t\t\t%-5d Updates saved | %-5d Update count | %-5d Updates saved for this prefix | %-5d Updates count for this prefix" % (updateOrigin, prevRibCount, prevUpdateSaved, prevUpdateCount, prevUpdateSavedThisPrefix, prevUpdateCountThisPrefix))
                             print("")
 
 
