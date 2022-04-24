@@ -50,6 +50,8 @@ bgp-detection-tool for the network security group project
   - use bgdata
   - db.bgpdata.remove({})
     - Can replace bgpdata with the collection you'd like to remove from
+- Remove specific batch
+  - db.bgpTest.remove({batchId: {$ne: "a11fc9d2-fe90-4d69-abe4-daf16b142855"}})
 
 ---
 

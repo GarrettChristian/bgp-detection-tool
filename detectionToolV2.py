@@ -87,7 +87,7 @@ def processUpdateFiles(dir):
     print("\n------------------------------\n\n")
     
     for i, updateFile in enumerate(updateFiles):
-        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
+        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}\n")
         totalUpdateCount += processUpdateFile(updateFile)
         print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
         print("\n------------------------------\n\n")
@@ -140,12 +140,12 @@ def processUpdate(update, num, updateFile):
             for prefixLarge in prefixListLarger:
                 if prefixLarge in trackedPrefixes:
                     matchingPrefix = prefixLarge
-                    matchCase = "larger"
+                    matchCase = "Larger"
 
             # Check if we have an exact match ie could be hijack or path poison
             if prefix in trackedPrefixes:
                 matchingPrefix = prefix
-                matchCase = "exact"
+                matchCase = "Exact"
 
 
             # If we match any of the prefixes we're tracking
@@ -174,20 +174,24 @@ def processUpdate(update, num, updateFile):
                             hijackCount += 1
                             hijackCountUpdateFile += 1
 
-                            print("%d Hijack - Prefix rib[%s] update[%s] (%s match), Origin does not match rib[%s] update[%s]"  % (hijackCount, announcement["nlri"][0], prefix, matchCase, announcementOrigin, updateOrigin))
+                            print("%-5d Potential Hijack \n\tPrefix | RIB %-18s | Update %-18s | %-6s match |\n\tOrigin | RIB %-18s | Update %-18s |"  % (hijackCount, announcement["nlri"][0], prefix, matchCase, announcementOrigin, updateOrigin))
 
                             # Check past occurances
-                            query = {"asOrigin": updateOrigin}
-                            previousOriginResult = bgpcollection.find(query)
-                            previousOrigin = list(previousOriginResult)
-                            if len(previousOrigin) != 0:
-                                print(f"\tUpdate origin {updateOrigin} has a saved announcement already for:")
-                                for prev in previousOrigin:
-                                    if ("count" in prev.keys()):
-                                        print("\t\t%s - %d " % (prev["nlri"][0], prev["count"]))
-                                    else:
-                                        print("\t\t%s - (RIB)" % (prev["nlri"][0]))
-                    
+                            query = {"as_origin": updateOrigin}
+                            previousOrigin = bgpcollection.find(query)
+                            prevRibCount = 0
+                            prevUpdateCount = 0
+                            for prev in previousOrigin:
+                                if ("count" in prev.keys()):
+                                    prevUpdateCount += 1
+                                else:
+                                    prevRibCount += 1
+
+                            if (prevRibCount > 0 or prevUpdateCount > 0):
+                                print("\t\tFor Update origin %-6s previously seen: \n\t\t\t%-5d RIB announcements \n\t\t\t%-5d Updates" % (updateOrigin, prevRibCount, prevUpdateCount))
+                            print("")
+
+
                             saveUpdate = {}
                             saveUpdate["_id"] = str(uuid.uuid4())
                             saveUpdate["updateFileName"] = updateFile
@@ -321,6 +325,7 @@ def main():
     global trackedPrefixes
     global args
 
+    print("\n\n------------------------------")
     print("\n\nStarting BGP Detection Tool\n\n")
 
     args = parse_args()
