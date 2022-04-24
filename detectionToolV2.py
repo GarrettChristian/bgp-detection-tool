@@ -33,6 +33,8 @@ dedup = {}
 batchId = str(uuid.uuid4())
 updatesToSave = []
 args = {}
+hijackCount = 0
+hijackCountUpdateFile = 0
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -81,6 +83,8 @@ def processUpdateFiles(dir):
         print("Update Files:")
         for i, updateFile in enumerate(updateFiles):
             print(f"{i + 1} {updateFile}")
+
+    print("\n------------------------------\n\n")
     
     for i, updateFile in enumerate(updateFiles):
         print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
@@ -118,6 +122,8 @@ Checking for prefix hijacks
 def processUpdate(update, num, updateFile):
     global updatesToSave
     global dedup    
+    global hijackCount
+    global hijackCountUpdateFile
 
     # Must have an origin to be announcing
     if "as_origin" in update.keys():
@@ -165,13 +171,16 @@ def processUpdate(update, num, updateFile):
                             # TODO check for diff origin for prefix hijack
                             # TODO check ROA
 
-                            print("%d Hijack - Prefix rib[%s] update[%s] (%s match), Origin does not match rib[%s] update[%s]"  % (num, announcement["nlri"][0], prefix, matchCase, announcementOrigin, updateOrigin))
+                            hijackCount += 1
+                            hijackCountUpdateFile += 1
+
+                            print("%d Hijack - Prefix rib[%s] update[%s] (%s match), Origin does not match rib[%s] update[%s]"  % (hijackCount, announcement["nlri"][0], prefix, matchCase, announcementOrigin, updateOrigin))
 
                             # Check past occurances
                             query = {"asOrigin": updateOrigin}
                             previousOriginResult = bgpcollection.find(query)
                             previousOrigin = list(previousOriginResult)
-                            if len(previousOrigin) > 0:
+                            if len(previousOrigin) != 0:
                                 print(f"\tUpdate origin {updateOrigin} has a saved announcement already for:")
                                 for prev in previousOrigin:
                                     if ("count" in prev.keys()):
@@ -194,6 +203,8 @@ def processUpdate(update, num, updateFile):
                             updatesToSave.append(saveUpdate)
 
                             dedup[curItem] = 1
+
+                            
 
                         else:
                             if (args.v):
@@ -288,16 +299,19 @@ def getSmallerPrefixes(addressPrefix):
 def saveUpdates():
     global updatesToSave
     global dedup
+    global hijackCountUpdateFile
 
     for update in updatesToSave:
         curItem = (update["matchedPrefix"], update["as_origin"])
         update["count"] = dedup[curItem]
         
 
-    print("Save updates ", len(updatesToSave))
+    print("Saving %d updates " % (len(updatesToSave)))
     bgpcollection.insert_many(updatesToSave)
     updatesToSave = []
-    print("Reset dedup")
+    print("Reseting dedup")
+    print("Found %d possible hijacks so far and %d in this file" % (hijackCount, hijackCountUpdateFile))
+    hijackCountUpdateFile = 0
     dedup = {}
 
 
@@ -307,7 +321,7 @@ def main():
     global trackedPrefixes
     global args
 
-    print("Starting BGP Detection Tool")
+    print("\n\nStarting BGP Detection Tool\n\n")
 
     args = parse_args()
     print("Parsing Updates from: ", args.update_dir)
