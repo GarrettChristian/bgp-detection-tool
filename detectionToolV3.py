@@ -40,7 +40,7 @@ updatesToSave = []
 args = {}
 hijackCount = 0
 hijackCountUpdateFile = 0
-cymClient = Client()
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -93,11 +93,17 @@ def processUpdateFiles(dir):
     print("\n------------------------------\n\n")
     
     for i, updateFile in enumerate(updateFiles):
-        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}\n")
+        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}\n\n")
+        tic = time.perf_counter()
         totalUpdateCount += processUpdateFile(updateFile)
-        print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
-        print("\n------------------------------\n\n")
+
+        toc = time.perf_counter()
+        timeSeconds = toc - tic
+        timeFormatted = formatSecondsToHhmmss(timeSeconds)
+        print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile} in {timeFormatted} seconds")
         
+        print("\n------------------------------\n\n")
+
     return totalUpdateCount
 
 
@@ -180,21 +186,14 @@ def processUpdate(update, num, updateFile):
                             hijackCount += 1
                             hijackCountUpdateFile += 1
 
-                            print("%-5d Potential Hijack \n\tPrefix | RIB %-18s | Update %-18s | %-6s match |\n\tOrigin | RIB %-18s | Update %-18s |"  % (hijackCount, announcement["nlri"][0], prefix, matchCase, announcementOrigin, updateOrigin))
+                            print("%-5d Potential Hijack " % (hijackCount))
+                            print("\tPrefix | RIB %-18s | Update %-18s | %-6s match |" % (announcement["nlri"][0], prefix, matchCase))
+                            print("\tOrigin | RIB %-18s | Update %-18s |"  % (announcementOrigin, updateOrigin))
 
                             # Check against whois
-                            ribPrefix = announcement["nlri"][0].split("/")[0]
-                            ip = socket.gethostbyname(ribPrefix)
-                            r = cymClient.lookup(ip)
-                            print("%-15s asn %-5s owner %s" % (ribPrefix, r.asn, r.owner))
-                            if (announcement["nlri"][0] != prefix):
-                                upPrefix = prefix.split("/")[0]
-                                ip = socket.gethostbyname(upPrefix)
-                                r = cymClient.lookup(ip)
-                                print("%-15s asn %-5s owner %s" % (upPrefix, r.asn, r.owner))
-
-
-                            # Check past occurances
+                            whoisCheck(announcement["nlri"][0], prefix, announcementOrigin, updateOrigin)
+      
+                            # Check past occurances in our database
                             query = {"as_origin": updateOrigin}
                             previousOrigin = bgpcollection.find(query)
                             prevRibCount = 0
@@ -213,7 +212,11 @@ def processUpdate(update, num, updateFile):
                                     prevRibCount += 1
 
                             if (prevRibCount > 0 or prevUpdateCount > 0):
-                                print("\t\tFor Update origin %-6s previously seen: \n\t\t\t%-5d RIB announcements \n\t\t\t%-5d Updates saved | %-5d Update count | %-5d Updates saved for this prefix | %-5d Updates count for this prefix" % (updateOrigin, prevRibCount, prevUpdateSaved, prevUpdateCount, prevUpdateSavedThisPrefix, prevUpdateCountThisPrefix))
+                                print("\t\t\tFor Update origin %-6s previously seen: " % (updateOrigin))
+                                print("\t\t\t\t%-5d RIB announcements" % (prevRibCount))
+                                print("\t\t\t\t%-5d Updates saved for origin          | %-5d Update count for origin" % (prevUpdateSaved, prevUpdateCount))
+                                print("\t\t\t\t%-5d Updates saved for origin & prefix | %-5d Updates count for origin & prefix" % (prevUpdateSavedThisPrefix, prevUpdateCountThisPrefix))
+                            print("")
                             print("")
 
 
@@ -289,6 +292,31 @@ def getLargerPrefixes(addressPrefix):
 
 
     return prefixes
+
+
+"""
+
+"""
+def whoisCheck(announcementPrefix, prefix, announcementOrigin, updateOrigin):
+
+    cymClient = Client()
+
+    ribPrefix = announcementPrefix.split("/")[0]
+    ip = socket.gethostbyname(ribPrefix)
+    upPrefix = prefix.split("/")[0]
+    ipUp = socket.gethostbyname(upPrefix)
+    asOrig = "AS" + announcementOrigin
+    asUp = "AS" + updateOrigin
+
+    results = list(cymClient.lookupmany([ip, ipUp, asOrig, asUp]))    
+
+    try:
+        print("\t\t%-14s | %-18s | %s" % ("RIB prefix", ribPrefix, results[0]))
+        print("\t\t%-14s | %-18s | %s" % ("Update prefix", upPrefix, results[1]))
+        print("\t\t%-14s | %-18s | %s" % ("RIB origin", asOrig, results[2]))
+        print("\t\t%-14s | %-18s | %s" % ("Update origin", asUp, results[3]))
+    except:
+        i = 1
 
 """
 "An AS could advertise a less specific prefix than the one being advertised by the owner. 
