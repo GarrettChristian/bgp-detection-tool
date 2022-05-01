@@ -65,8 +65,8 @@ def main():
             
                 # Batched insert
                 if (len(randomSampleBatch) == 200):
-                        bgpCol.insert_many(randomSampleBatch)
-                        randomSampleBatch = []
+                    bgpCol.insert_many(randomSampleBatch)
+                    randomSampleBatch = []
 
         i += 1
 

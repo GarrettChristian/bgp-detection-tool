@@ -15,9 +15,15 @@ bgp-detection-tool for the network security group project
 - pip install mrtparse
 - python3 -m pip install pymongo
 - python3 -m pip install "pymongo[srv]"
+- pip3 install cymruwhois
+- pip3 install requests
 
 ### Setting up the connection to mongodb
 - add the txt file called mongoconnect.txt with one line that looks like mongodb://ipaddress:port/
+
+### Setting up routinator
+- Followed ubuntu steps
+- https://routinator.docs.nlnetlabs.nl/en/stable/installation.html
 
 ---
 

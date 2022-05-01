@@ -5,7 +5,7 @@ https://www.mongodb.com/blog/post/getting-started-with-python-and-mongodb
 from sys import prefix
 from pymongo import MongoClient
 from mrtparse import *
-import parserHelperV2
+import parserHelper
 import time
 from commonUtil import formatSecondsToHhmmss, mongoConnect
 import json
@@ -52,7 +52,7 @@ def main():
         if (i % 100 == 0):
 
             insertData = {}
-            insertData = parserHelperV2.parseData(entry, i)
+            insertData = parserHelper.parseData(entry, i)
             # print(json.dumps([insertData], indent=2))
 
             # We have not saved this prefix to monitor already
@@ -65,8 +65,8 @@ def main():
             
                 # Batched insert
                 if (len(randomSampleBatch) == 200):
-                    bgpCol.insert_many(randomSampleBatch)
-                    randomSampleBatch = []
+                        bgpCol.insert_many(randomSampleBatch)
+                        randomSampleBatch = []
 
         i += 1
 

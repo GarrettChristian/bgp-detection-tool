@@ -6,7 +6,8 @@ import json
 
 prefix = "208.65.152.0/22"
 originASN = "36561"
-getRequest = "https://rpki-validator.ripe.net/api/v1/validity/" + originASN + "/" + prefix
+# getRequest = "https://rpki-validator.ripe.net/api/v1/validity/" + originASN + "/" + prefix
+getRequest = "http://localhost:8323/api/v1/validity/" + originASN + "/" + prefix
 
 x = requests.get(getRequest)
 print(x.status_code)

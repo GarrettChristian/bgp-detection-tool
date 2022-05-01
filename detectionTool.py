@@ -1,34 +1,37 @@
 """
 ------------------------------------------
 
-Detection Tool
+BGP Detection Tool
 
 ------------------------------------------
 """
 
-import collections
-import re
-from sys import prefix
-from turtle import up
 from pymongo import MongoClient
 from mrtparse import *
 import parserHelper
 import time
 import glob
-import json
 from commonUtil import formatSecondsToHhmmss, mongoConnect
-import ipaddress
 from ipaddress import ip_network, ip_address, IPv4Address
 import argparse
+import uuid
+import socket
+import requests
+from cymruwhois import Client
+
 
 # ------------------------------------------
 
 # Global variables
 db = None
 bgpcollection = None
-detectedAttacks = {}
 trackedPrefixes = set()
-
+dedup = {}
+batchId = str(uuid.uuid4())
+updatesToSave = []
+args = {}
+hijackCount = 0
+hijackCountUpdateFile = 0
 
 
 def parse_args():
@@ -38,6 +41,8 @@ def parse_args():
         'update_dir', help='Path to the update directory')
     p.add_argument(
         'mongo_collection', help='Mongo db collection name')
+    p.add_argument(
+        '-v', action='store_true', help='Enable verbose logging')
     
     return p.parse_args()
 
@@ -60,27 +65,39 @@ def populateTrackedPrefixes():
 
 
 """
-Processes a list of update files
+Processes a directory of update files
 """
 def processUpdateFiles(dir):
 
     totalUpdateCount = 0
 
-    # updateFiles = glob.glob(dir + "/updates*.bz2")
-    updateFiles = glob.glob(dir + "/updates.20220307.1200.bz2")
+    updateFiles = glob.glob(dir + "/updates*.bz2")
     
     # Order the update files cronologically
     updateFiles = sorted(updateFiles)
 
-    print("Update Files:")
-    for i, updateFile in enumerate(updateFiles):
-        print(f"{i + 1} {updateFile}")
+    if (args.v):
+        print("Update Files:")
+        for i, updateFile in enumerate(updateFiles):
+            print(f"{i + 1} {updateFile}")
+
+    print("\n------------------------------\n\n")
     
+    # Process each update file
     for i, updateFile in enumerate(updateFiles):
-        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
+        print(f"Starting Processing on {i + 1} / {len(updateFiles)}: {updateFile}\n\n")
+        tic = time.perf_counter()
+
+        # handle the update file
         totalUpdateCount += processUpdateFile(updateFile)
-        print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile}")
+
+        toc = time.perf_counter()
+        timeSeconds = toc - tic
+        timeFormatted = formatSecondsToHhmmss(timeSeconds)
+        print(f"Finished Processing on {i + 1} / {len(updateFiles)}: {updateFile} in {timeFormatted} seconds")
         
+        print("\n------------------------------\n\n")
+
     return totalUpdateCount
 
 
@@ -92,11 +109,12 @@ def processUpdateFile(updateFile):
     updateCount = 0
     for entry in Reader(updateFile):
 
-        # Convert to dictionary
-        updateData = parserHelper.parseData(entry, updateCount)
-        processUpdate(updateData, updateCount)
+        update = parserHelper.parseData(entry, updateCount)
+        processUpdate(update, updateCount, updateFile)
 
         updateCount += 1
+
+    saveUpdates()
     
     return updateCount
 
@@ -104,14 +122,14 @@ def processUpdateFile(updateFile):
 """
 Handles one specific update
 
-Currently only checks for prefix hijck attacks
+Checking for prefix hijacks
 
 """
-def processUpdate(update, num):
-    global detectedAttacks
-
-    # TODO could examine withdraws, currently not differentiating 
-    # print(json.dumps([update], indent=2))
+def processUpdate(update, num, updateFile):
+    global updatesToSave
+    global dedup    
+    global hijackCount
+    global hijackCountUpdateFile
 
     # Must have an origin to be announcing
     if "as_origin" in update.keys():
@@ -119,111 +137,122 @@ def processUpdate(update, num):
         # For every prefix announced for this origin
         for prefix in update["nlri"]:
 
+            # Check if we have hijack larger prefix varient 
             prefixListLarger = getLargerPrefixes(prefix)
 
-            matchCase = -1
+            matchCase = ""
             matchingPrefix = None
 
+            # Check for the large match an example would be google
             for prefixLarge in prefixListLarger:
                 if prefixLarge in trackedPrefixes:
                     matchingPrefix = prefixLarge
-                    matchCase = 0
+                    matchCase = "Larger"
 
-            prefixListSmaller = getSmallerPrefixes(prefix)
-
-            for prefixSmall in prefixListSmaller:
-                if prefixSmall in trackedPrefixes:
-                    matchingPrefix = prefixSmall
-                    matchCase = 1
-
+            # Check if we have an exact match ie could be hijack or path poison
             if prefix in trackedPrefixes:
                 matchingPrefix = prefix
-                matchCase = 2
+                matchCase = "Exact"
 
+
+            # If we match any of the prefixes we're tracking
             if matchingPrefix != None:
-                # print("----")
-                
-                query = {"nlri": matchingPrefix}
-                results = bgpcollection.find(query)
 
-                for announcement in results:
-                    announcementOrigin = announcement["as_origin"]
-                    updateOrigin = update["as_origin"]
+                updateOrigin = update["as_origin"]
+                curItem = (prefix, updateOrigin)
 
-                    if announcementOrigin != updateOrigin:
-                        # TODO check for diff origin for prefix hijack
-                        # TODO check ROA
-                        print("%d prefix rib[%s] up[%s] Origin does not match (%d) could be prefix hijack: rib[%s] update[%s]"  % (num, announcement["nlri"][0], matchingPrefix, matchCase, announcementOrigin, updateOrigin))
-                    # else:
-                        # print("Origin matches could be path poison", matchCase, announcementOrigin, announcement["as_path"], update["as_path"])
-                        # TODO check path
-                        # TODO check communities 
+                # Something we've seen before in this update
+                if curItem in dedup:
+                    dedup[curItem] = dedup[curItem] + 1
 
+                # New occurance 
+                else:
+                    # only check our initial rib collection
+                    query = {"nlri": matchingPrefix, "updateFileName": { "$exists": False } }
+                    results = bgpcollection.find(query)
 
-                # TODO save this one
+                    for announcement in results:
+                        announcementOrigin = announcement["as_origin"]
 
+                        if announcementOrigin != updateOrigin:
 
-            
+                            hijackCount += 1
+                            hijackCountUpdateFile += 1
 
+                            print("%-5d Potential Hijack " % (hijackCount))
+                            print("\tPrefix | RIB %-18s | Update %-18s | %-6s match |" % (announcement["nlri"][0], prefix, matchCase))
+                            print("\tOrigin | RIB %-18s | Update %-18s |"  % (announcementOrigin, updateOrigin))
 
-    # # Must have an as origin
-    # if "as_origin" in update.keys():
-    #     asOrigin = update["as_origin"]
+                            # Check against whois
+                            whoisCheck(announcement["nlri"][0], prefix, announcementOrigin, updateOrigin)
 
-    #     # For every prefix announced by this origin
-    #     for prefix in update["nlri"]:
+                            routinatorCheck(prefix, updateOrigin)
+      
+                            # Check past occurances in our database
+                            query = {"as_origin": updateOrigin}
+                            previousOrigin = bgpcollection.find(query)
+                            prevRibCount = 0
+                            prevUpdateSaved = 0
+                            prevUpdateCount = 0
+                            prevUpdateSavedThisPrefix = 0
+                            prevUpdateCountThisPrefix = 0
+                            for prev in previousOrigin:
+                                if ("count" in prev.keys()):
+                                    prevUpdateSaved += 1
+                                    prevUpdateCount += prev["count"]
+                                    if (prev["matchedPrefix"] == prefix):
+                                        prevUpdateSavedThisPrefix += 1
+                                        prevUpdateCountThisPrefix += prev["count"]
+                                else:
+                                    prevRibCount += 1
 
-    #         # Already detected
-    #         if ((prefix, asOrigin) in detectedAttacks.keys()):
-    #             count = detectedAttacks.get((prefix, asOrigin), 0)
-    #             detectedAttacks[(prefix, asOrigin)] = count + 1
-
-    #         # Check against db 
-    #         else:
-    #             # Varient 1
-    #             prefixListLarger = getLargerPrefixes(prefix)
-    #             # TODO varient 2, I think smaller might be difficult onlly because it produces a lot of possible
-    #             # varients which could be difficult with the $in query that has to check against everythin
-    #             # we could concievbly change this to a clever regex then check on actual matches after
-    #             # trade off there is that it could be pulling more than we need to
-    #             # Another option is we could redo the db schema 
-    #             # to track each related announcement as a list with the prefix as the id, this could make saving easier 
-    #             # prefixListSmaller = getSmallerPrefixes(prefix)
-
-    #             prefixList = prefixListLarger + [prefix]
-
-    #             # a different origin 
-    #             # the same, shorter, or longer version of this prefix 
-    #             query = {"as_origin": {"$ne": asOrigin}, "nlri": {"$in": prefixList}}
-    #             # print(query)
-    #             results = bgpcollection.find(query)
-
-    #             # TODO post processing for longer short same 
-
-    #             for announcement in results:
-    #                 printAttackInfo(update, prefix, announcement)
-
-    #                 # Check to see if this prefix has announced this AS before
-    #                 query = {"as_origin": asOrigin, "nlri": prefix}
-    #                 result = bgpcollection.find_one(query)
-    #                 if (result != None):
-    #                     print(f"{asOrigin} has announced {prefix} before")
+                            if (prevRibCount > 0 or prevUpdateCount > 0):
+                                print("\t\t\tFor Update origin %-6s previously seen: " % (updateOrigin))
+                                print("\t\t\t\t%-5d RIB announcements" % (prevRibCount))
+                                print("\t\t\t\t%-5d Updates saved for origin          | %-5d Update count for origin" % (prevUpdateSaved, prevUpdateCount))
+                                print("\t\t\t\t%-5d Updates saved for origin & prefix | %-5d Updates count for origin & prefix" % (prevUpdateSavedThisPrefix, prevUpdateCountThisPrefix))
+                            print("")
+                            print("")
 
 
-    #             # TODO add varient 2 getSmallerPrefixes
-    #             # TODO add checks to see if the prefix is the same, since this can be an example of SICO path, check comm
-    #             # TODO could also check for path attacks, rather than seeing if origin is different 
-    #             # TODO advertising an invalid route
-    #             # TODO ROA / RPKI
+                            # Prepare update to save
+                            saveUpdate = {}
+                            saveUpdate["_id"] = str(uuid.uuid4())
+                            saveUpdate["updateFileName"] = updateFile
+                            saveUpdate["timestamp"] = update["timestamp"]
+                            saveUpdate["originated_time"] = update["originated_time"]
+                            saveUpdate["nlri"] = announcement["nlri"]
+                            saveUpdate["matchedPrefix"] = prefix
+                            saveUpdate["as_path"] = update["as_path"]
+                            saveUpdate["as_origin"] = update["as_origin"]
+                            saveUpdate["communities"] = update["communities"]
+                            saveUpdate["batchId"] = batchId
 
-    #             # Check for path poisoning
-    #             query = {"as_origin": asOrigin, "nlri": {"$in": prefixList}}
+                            updatesToSave.append(saveUpdate)
+
+                            dedup[curItem] = 1
 
 
-    
-    # TODO save based on prefix if its in query = {"nlri": {"$in": prefixList}}
-    # Save
+                        # Same origin
+                        else:
+                            if (args.v):
+                                print("%d Prefix rib[%s] update[%s] (%s) match, Origin matches %s" % (num, announcement["nlri"][0], prefix, matchCase, announcementOrigin))
 
+                            saveUpdate = {}
+                            saveUpdate["_id"] = str(uuid.uuid4())
+                            saveUpdate["updateFileName"] = updateFile
+                            saveUpdate["timestamp"] = update["timestamp"]
+                            saveUpdate["originated_time"] = update["originated_time"]
+                            saveUpdate["nlri"] = announcement["nlri"]
+                            saveUpdate["matchedPrefix"] = prefix
+                            saveUpdate["as_path"] = update["as_path"]
+                            saveUpdate["as_origin"] = update["as_origin"]
+                            saveUpdate["communities"] = update["communities"]
+                            saveUpdate["batchId"] = batchId
+
+                            updatesToSave.append(saveUpdate)
+                            
+                            dedup[curItem] = 1
 
 """
 "An AS could advertise a more specific prefix than the one being 
@@ -257,6 +286,49 @@ def getLargerPrefixes(addressPrefix):
 
     return prefixes
 
+
+"""
+Checks the who is data for the announcement and update using cym
+Redundent calls are caught by cyms caching
+"""
+def whoisCheck(announcementPrefix, prefix, announcementOrigin, updateOrigin):
+
+    cymClient = Client()
+
+    ribPrefix = announcementPrefix.split("/")[0]
+    ip = socket.gethostbyname(ribPrefix)
+    upPrefix = prefix.split("/")[0]
+    ipUp = socket.gethostbyname(upPrefix)
+    asOrig = "AS" + announcementOrigin
+    asUp = "AS" + updateOrigin
+
+    results = list(cymClient.lookupmany([ip, ipUp, asOrig, asUp]))    
+
+    try:
+        print("\t\t%-14s | %-18s | %s" % ("RIB prefix", ribPrefix, results[0]))
+        print("\t\t%-14s | %-18s | %s" % ("Update prefix", upPrefix, results[1]))
+        print("\t\t%-14s | %-18s | %s" % ("RIB origin", asOrig, results[2]))
+        print("\t\t%-14s | %-18s | %s" % ("Update origin", asUp, results[3]))
+    except:
+        # No op
+        i = 1
+
+"""
+Checks the route origin authorization using routinator
+"""
+def routinatorCheck(prefix, updateOrigin):
+
+    getRequestUpdate = "http://localhost:8323/api/v1/validity/" + updateOrigin + "/" + prefix
+
+    try:
+        routinatorUpdate = requests.get(getRequestUpdate)
+        data = routinatorUpdate.json()
+        valid = data['validated_route']["validity"]["state"]
+        print("\t\tRoutinator for Update is: %s" % (valid))
+    except:
+        # No op
+        i = 1
+
 """
 "An AS could advertise a less specific prefix than the one being advertised by the owner. 
 This would hijack traffic to the prefix only when the owner withdraws its advertisements. 
@@ -265,6 +337,9 @@ the hijacking AS would not be able to route the hijacked traffic to the owner."
 - A Study of Prefix Hijacking and Interception in the Internet
 
 This finds all smaller prefixes to look for the above type of hijack attack 
+
+
+DEPRECATED - 2^n, op where n is
 """
 def getSmallerPrefixes(addressPrefix):
 
@@ -277,7 +352,7 @@ def getSmallerPrefixes(addressPrefix):
     
     # IPv4
     if type(ip_address(address)) is IPv4Address:
-        for newPrefix in range (prefixLength + 1, 32):
+        for newPrefix in range (prefixLength + 1, 24):
             subnets = ip_network(addressPrefix).subnets(new_prefix=newPrefix)
             for subnet in subnets:
                 prefixes.append(str(subnet))
@@ -289,44 +364,42 @@ def getSmallerPrefixes(addressPrefix):
 
     return prefixes
 
-
 """
-Prints the important information related to the hijack attack
+Saves the updates that are relevant to our tracked prefixes
 """
-def printAttackInfo(update, updatePrefix, announcement):
-    global detectedAttacks
+def saveUpdates():
+    global updatesToSave
+    global dedup
+    global hijackCountUpdateFile
 
-    print("\n------------------------------")
-    print("Potential Hijack Attack Detected!")
-    print("Update")
-    print("Origin", update["as_origin"])
-    print("Prefix", updatePrefix)
-    # print(json.dumps([update], indent=2))
+    for update in updatesToSave:
+        curItem = (update["matchedPrefix"], update["as_origin"])
+        update["count"] = dedup[curItem]
+        
 
-    print("RIB")
-    print("Origin", announcement["as_origin"])
-    print("Prefix", announcement["nlri"])
-    # print(json.dumps([announcement], indent=2))
-        
-        
-    # update the occurances of this detection
-    detectedAttacks[(updatePrefix, update["as_origin"])] = 1
-    
+    print("Saving %d updates " % (len(updatesToSave)))
+    bgpcollection.insert_many(updatesToSave)
+    updatesToSave = []
+    print("Reseting dedup")
+    print("Found %d possible hijacks so far and %d in this file" % (hijackCount, hijackCountUpdateFile))
+    hijackCountUpdateFile = 0
+    dedup = {}
 
 
 def main():
     global db
     global bgpcollection
     global trackedPrefixes
+    global args
 
-    print("Starting BGP Detection Tool")
+    print("\n\n------------------------------")
+    print("\n\nStarting BGP Detection Tool\n\n")
 
     args = parse_args()
     print("Parsing Updates from: ", args.update_dir)
     
     # Connect to database
     # Note is expected that the loader has been run first
-    # TODO could add diff collections for the diff days we're examining 
     db = mongoConnect("bgpdata")
     bgpcollection = db[args.mongo_collection]
     print("Connected to bgpdata and collection ", args.mongo_collection)
@@ -344,10 +417,6 @@ def main():
     toc = time.perf_counter()
     timeSeconds = toc - tic
     timeFormatted = formatSecondsToHhmmss(timeSeconds)
-
-    print("\n------------------------------")
-    for pair in detectedAttacks:
-        print("%d repeats of %s, %s" % ((detectedAttacks[pair]), pair[0], pair[1]))
 
     print("\n------------------------------")
     print(f"Loaded all {updateCount} updates in {timeFormatted} seconds")

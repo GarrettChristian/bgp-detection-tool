@@ -385,31 +385,31 @@ class BgpDump:
     def toDictSelect(self):
         data = {}
         data["_id"] = str(uuid.uuid4())
-        # data["type"] = self.type
-        # data["num"] = self.num
+        data["type"] = self.type
+        data["num"] = self.num
         data["timestamp"] = self.ts
         data["originated_time"] = self.org_time
-        # data["flag"] = self.flag
+        data["flag"] = self.flag
         data["peer_ip"] = self.peer_ip
         data["peer_as"] = self.peer_as
         data["nlri"] = self.nlri
-        # data["withdrawn"] = self.withdrawn
+        data["withdrawn"] = self.withdrawn
         data["as_path"] = self.as_path
         if (len(self.as_path) > 0):
             data["as_origin"] = self.as_path[-1]
-        # data["origin"] = self.origin
-        # data["next_hop"] = self.next_hop
-        # data["local_pref"] = self.local_pref
-        # data["med"] = self.med
+        data["origin"] = self.origin
+        data["next_hop"] = self.next_hop
+        data["local_pref"] = self.local_pref
+        data["med"] = self.med
         data["communities"] = self.comm_list
-        # data["atomic_aggr"] = self.atomic_aggr
-        # data["aggr"] = self.aggr
-        # data["as4_path"] = self.as4_path
-        # data["as4_aggr"] = self.as4_aggr
-        # data["old_state"] = self.old_state
-        # data["new_state"] = self.new_state
-        # data['subtype'] = self.subtype
-        # data['subtype_num'] = self.subtypeNum
+        data["atomic_aggr"] = self.atomic_aggr
+        data["aggr"] = self.aggr
+        data["as4_path"] = self.as4_path
+        data["as4_aggr"] = self.as4_aggr
+        data["old_state"] = self.old_state
+        data["new_state"] = self.new_state
+        data['subtype'] = self.subtype
+        data['subtype_num'] = self.subtypeNum
 
         return data
 
