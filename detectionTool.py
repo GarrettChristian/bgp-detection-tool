@@ -293,18 +293,18 @@ Redundent calls are caught by cyms caching
 """
 def whoisCheck(announcementPrefix, prefix, announcementOrigin, updateOrigin):
 
-    cymClient = Client()
-
-    ribPrefix = announcementPrefix.split("/")[0]
-    ip = socket.gethostbyname(ribPrefix)
-    upPrefix = prefix.split("/")[0]
-    ipUp = socket.gethostbyname(upPrefix)
-    asOrig = "AS" + announcementOrigin
-    asUp = "AS" + updateOrigin
-
-    results = list(cymClient.lookupmany([ip, ipUp, asOrig, asUp]))    
-
     try:
+        cymClient = Client()
+
+        ribPrefix = announcementPrefix.split("/")[0]
+        ip = socket.gethostbyname(ribPrefix)
+        upPrefix = prefix.split("/")[0]
+        ipUp = socket.gethostbyname(upPrefix)
+        asOrig = "AS" + announcementOrigin
+        asUp = "AS" + updateOrigin
+
+        results = list(cymClient.lookupmany([ip, ipUp, asOrig, asUp]))  
+
         print("\t\t%-14s | %-18s | %s" % ("RIB prefix", ribPrefix, results[0]))
         print("\t\t%-14s | %-18s | %s" % ("Update prefix", upPrefix, results[1]))
         print("\t\t%-14s | %-18s | %s" % ("RIB origin", asOrig, results[2]))
